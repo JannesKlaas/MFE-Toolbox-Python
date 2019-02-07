@@ -49,7 +49,7 @@ def stationary_bootstrap(data,B,w):
     
     for i in range(1,t):
         # Determine whether we stay (rand>p) or move to a new starting value
-        indices[i,~select[i,:]] = indices[i,~select[i,:]]
+        indices[i,~select[i,:]] = indices[i-1,~select[i,:]]
     # Make sure indices don't go out of bound
     indices[indices>t-1] = indices[indices>t-1]-t-1
     # Indices need to be integers

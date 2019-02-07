@@ -1,6 +1,6 @@
-##
-## UNFINISHED DO NOT USE
-##
+#import bootstrap
+from .stationary_bootstrap import stationary_bootstrap
+from .block_bootstrap import block_bootstrap
 
 import numpy as np
 def bsds(bench,models,B,w,test_type = 'STUDENTIZED',boot='STATIONARY'):
@@ -70,6 +70,81 @@ def bsds(bench,models,B,w,test_type = 'STUDENTIZED',boot='STATIONARY'):
     assert (boot == 'STATIONARY')  or (boot == 'BLOCK'), 'Only STATIONARY or BLOCK boot\
     type supported'
     
+    bsdata = None
+    if boot == 'BLOCK':
+        bsdata,_ = block_bootstrap(np.expand_dims(np.arange(0,t),-1),B,w)
+    else:
+        bsdata,_ = stationary_bootstrap(np.expand_dims(np.arange(0,t),-1),B,w)
+    
+    # Compute loss differences
+    diffs = models - np.tile(bench,(1,k))
+    
+    q=1/w
+    i = np.arange(1,t)
+    kappa = ((t-i)/t) * (1-q)**i + i/t * (1-q)**(t-i)
+    
+    variances = np.zeros((k,1))
+    
+    for i in range(0,k):
+        
+        workdata = diffs[:,i] - np.mean(diffs[:,i])
+        variances[i] = workdata.T.dot(workdata)/t
+        
+        for j in range(0,t-1):
+            variances[i] = variances[i] + 2*kappa[j]*workdata[0:t-j].T.dot(workdata[j:t])/t
+    
+    # A new used the log(log(t)) rule
+    Anew = np.sqrt((variances/t)*2*np.log(np.log(t)));    
+    
+    # Only recenter if the average is reasonably small or the model is better
+    # (in which case mean(diffs) is negative).  If it is unreasonably large set
+    # the mean adjustment to 0
+    ms = np.expand_dims(np.mean(diffs,axis=0),-1)
+    gc = ms*(ms<Anew)
+    #gc = np.mean(diffs,axis=0)*(np.mean(diffs,axis=0)<Anew)
     
     
+    # The lower assumes that every loss function that is worse than BM is
+    # unimportant for the asymptotic distribution, hence if its mean is
+    # less than 0, g=0.  This is different from the consistent where the
+    # threshold was it had to be greater than -A(i)
+    gl = np.clip(np.mean(diffs,axis=0),a_min = None,a_max = 0)
     
+    
+    #Then the upper, which assumes all models used are reasonably close to
+    # the benchmark that they could be better
+    gu = np.mean(diffs,axis=0)
+    
+    
+    # Perf will hold the boostrapped statistics for B iterations
+    perfc = np.zeros((B,k))
+    perfl = np.zeros((B,k))
+    perfu = np.zeros((B,k))
+    
+    stdDev = np.sqrt(variances) if isStudentized else np.ones((1,k))
+    
+    for i in range(0,k):
+        # the i'th column of perf holds the B bootstrapped statistics
+        workdata = diffs[:,i]
+        mworkdata = np.mean(workdata[bsdata])
+        perfc[:,i] = (mworkdata-gc[i]).T/stdDev[i]
+        perfl[:,i] = (mworkdata-gl[i]).T/stdDev[i]
+        perfu[:,i] = (mworkdata-gu[i]).T/stdDev[i]
+        
+    # Compute the test statistic
+    stat = np.min(np.mean(diffs,axis=0)/stdDev)
+    
+    # Compute the min in each row
+    perfc = np.min(perfc,axis=1)
+    perfc = np.clip(perfc,a_min = None, a_max = 0)
+    
+    perfl = np.min(perfl,axis=1)
+    perfl = np.clip(perfl,a_min = None, a_max = 0)
+    
+    perfu = np.min(perfu,axis=1)
+    perfu = np.clip(perfu,a_min = None, a_max = 0)
+    
+    c=np.mean(perfc<stat)
+    l=np.mean(perfl<stat)
+    u=np.mean(perfu<stat)
+    return c, l, u
