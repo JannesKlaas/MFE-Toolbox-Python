@@ -37,4 +37,6 @@ def block_bootstrap(data,B,w):
     indices[indices > t-1] = indices[indices > t-1]-(t+1)
     indices = indices.astype(int)
     bsdata = data[indices]
+    
+    bsdata = bsdata.reshape((t,B))
     return bsdata, indices
